@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Foodie - 校園美食評分</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons (as a script for vanilla JS) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --warm-bg: #f5f5f0;
+            --olive: #5A5A40;
+            --cream: #FFFFFF;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--warm-bg);
+            color: #1a1a1a;
+        }
+
+        .serif {
+            font-family: 'Cormorant Garamond', serif;
+        }
+
+        .bg-warm-bg { background-color: var(--warm-bg); }
+        .bg-olive { background-color: var(--olive); }
+        .text-olive { color: var(--olive); }
+        .border-olive { border-color: var(--olive); }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Animation classes */
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Modal backdrop blurring */
+        #modalBackdrop { backdrop-filter: blur(4px); }
+    </style>
+</head>
+<body class="min-h-screen relative pb-20">
+
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <header class="sticky top-0 z-30 bg-warm-bg/80 backdrop-blur-md border-b border-olive/10 py-4 flex justify-between items-center mb-4">
+            <div class="flex items-center gap-2">
+                <div class="bg-olive p-2 rounded-full text-white shadow-lg">
+                    <i data-lucide="utensils" size="20"></i>
+                </div>
+                <h1 class="serif text-2xl font-bold tracking-tight text-olive hidden sm:block">校園美食評分</h1>
+                <h1 class="serif text-xl font-bold tracking-tight text-olive sm:hidden">美食評分</h1>
+            </div>
+            <div class="flex bg-olive/5 p-1 rounded-full border border-olive/10 shadow-inner">
+                <button id="navHome" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 bg-olive text-white shadow-md">
+                    <i data-lucide="layout-grid" size="14"></i>
+                    <span class="hidden sm:inline">食評</span>
+                </button>
+                <button id="navLeaderboard" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 text-olive/60 hover:text-olive">
+                    <i data-lucide="trophy" size="14"></i>
+                    <span class="hidden sm:inline">排行</span>
+                </button>
+                <button id="navLottery" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 text-olive/60 hover:text-olive">
+                    <i data-lucide="dice-5" size="14"></i>
+                    <span class="hidden sm:inline">抽籤</span>
+                </button>
+            </div>
+        </header>
+
+        <main id="mainContent">
+            <!-- Home View -->
+            <div id="homeView" class="animate-in fade-in duration-500">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-8">
+                    <!-- Sidebar/Filters -->
+                    <div class="md:col-span-3 space-y-6">
+                        <div class="bg-white/50 backdrop-blur-sm rounded-3xl p-5 border border-white shadow-sm md:sticky md:top-24">
+                            <h3 class="text-[10px] font-black text-olive/40 uppercase tracking-[0.2em] mb-4">篩選分類</h3>
+                            <div class="flex flex-wrap md:flex-col gap-2" id="categoryFilters">
+                                <!-- Categories will be injected here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main List -->
+                    <div class="md:col-span-9 space-y-6">
+                        <!-- Stats Panel -->
+                        <div class="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-olive/5 backdrop-blur-sm">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                                <div class="flex gap-5 sm:gap-6">
+                                    <div class="flex flex-col">
+                                        <span class="text-[9px] font-black text-olive/30 uppercase tracking-widest">ACTIVE</span>
+                                        <span class="text-xl sm:text-2xl font-bold text-olive" id="activeCount">0</span>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <span class="text-[9px] font-black text-olive/30 uppercase tracking-widest">DONE</span>
+                                        <span class="text-xl sm:text-2xl font-bold text-gray-400" id="doneCount">0</span>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <span class="text-[9px] font-black text-olive/30 uppercase tracking-widest">TOTAL</span>
+                                        <span class="text-xl sm:text-2xl font-bold text-olive/20" id="totalCount">0</span>
+                                    </div>
+                                </div>
+                                <div class="w-full sm:w-auto flex gap-1 p-1 bg-olive/5 rounded-2xl border border-olive/10" id="statusFilters">
+                                    <button data-filter="全部" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-xl transition-all bg-white text-olive shadow-sm ring-1 ring-olive/10">全部</button>
+                                    <button data-filter="active" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-xl transition-all text-olive/40 hover:text-olive/60">ACTIVE</button>
+                                    <button data-filter="done" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-xl transition-all text-olive/40 hover:text-olive/60">DONE</button>
+                                </div>
+                            </div>
+
+                            <!-- Review List -->
+                            <div id="reviewList" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <!-- Cards will be injected here -->
+                            </div>
+                            
+                            <div id="emptyState" class="hidden text-center py-20 text-olive/40">
+                                <i data-lucide="message-square-quote" size="48" class="mx-auto mb-4 opacity-20"></i>
+                                <p class="serif text-xl">暫無相關食評</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Leaderboard View -->
+            <div id="leaderboardView" class="hidden animate-in fade-in duration-500 max-w-4xl mx-auto py-8">
+                <div class="text-center mb-12">
+                    <h2 class="serif text-4xl font-black text-olive mb-2 flex items-center justify-center gap-3">
+                        <i data-lucide="award" class="text-amber-500" size="32"></i> 美食排行榜
+                    </h2>
+                    <p class="text-olive/40 text-sm font-medium tracking-widest uppercase">校園公認最好吃的菜品集錦</p>
+                </div>
+                <div id="leaderboardList" class="space-y-4">
+                    <!-- Items will be injected here -->
+                </div>
+            </div>
+
+            <!-- Lottery View -->
+            <div id="lotteryView" class="hidden animate-in fade-in duration-500 max-w-2xl mx-auto py-12">
+                <div class="text-center mb-12">
+                    <h2 class="serif text-4xl font-black text-olive mb-2 flex items-center justify-center gap-3">
+                        <i data-lucide="dice-5" class="text-olive" size="32"></i> 今天吃什麼？
+                    </h2>
+                    <p class="text-olive/40 text-sm font-medium tracking-widest uppercase">隨機為您推薦一項美食</p>
+                </div>
+
+                <div class="bg-white rounded-[3rem] p-12 shadow-2xl border border-olive/5 text-center relative overflow-hidden">
+                    <div class="absolute inset-0 bg-olive/[0.02] pointer-events-none"></div>
+                    
+                    <div id="lotteryBox" class="min-h-[200px] flex flex-col items-center justify-center space-y-6">
+                        <div id="lotteryResult" class="hidden space-y-4">
+                            <div class="inline-block px-4 py-1.5 bg-olive/10 text-olive text-xs font-black rounded-full uppercase tracking-widest" id="lotteryResultCategory">咖啡廳</div>
+                            <h3 id="lotteryResultName" class="serif text-5xl font-black text-olive leading-tight">叉燒燒鵝飯</h3>
+                            <p id="lotteryResultContent" class="text-gray-400 italic max-w-xs mx-auto text-sm">"真的很好吃，建議大家下午去買！"</p>
+                        </div>
+                        
+                        <div id="lotteryIdle" class="space-y-4">
+                            <div class="w-24 h-24 bg-olive/10 rounded-full flex items-center justify-center mx-auto text-olive/20">
+                                <i data-lucide="help-circle" size="48"></i>
+                            </div>
+                            <p class="text-olive/40 font-bold">點擊下方按鈕開始抽籤</p>
+                        </div>
+
+                        <div id="lotterySpinning" class="hidden space-y-6">
+                            <div class="flex gap-2 justify-center">
+                                <div class="w-3 h-3 bg-olive rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+                                <div class="w-3 h-3 bg-olive rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                                <div class="w-3 h-3 bg-olive rounded-full animate-bounce" style="animation-delay: 0.3s"></div>
+                            </div>
+                            <p class="text-olive font-black tracking-widest text-xl animate-pulse">挑選中...</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-12 pt-12 border-t border-olive/5">
+                        <button id="spinBtn" class="w-full bg-olive text-white font-black py-6 rounded-2xl shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 text-xl group">
+                            <span>點我開抽</span>
+                            <i data-lucide="shuffle" size="24" class="group-hover:rotate-180 transition-transform duration-500"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <p id="lotteryError" class="mt-8 text-center text-red-400 font-bold hidden">系統中暫無菜品名稱，快去發佈第一條吧！</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Floating Action Button -->
+    <button id="openModalBtn" class="fixed bottom-6 right-6 w-14 h-14 bg-olive text-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-transform z-40">
+        <i data-lucide="plus" size="28"></i>
+    </button>
+
+    <!-- Submission Modal -->
+    <div id="modalBackdrop" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center p-4 bg-olive/40 backdrop-blur-sm">
+        <div id="modalContent" class="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl overflow-hidden translate-y-full transition-transform duration-300">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="serif text-2xl font-bold text-olive">發表食評</h2>
+                <button id="closeModalBtn" class="text-olive/40 hover:text-olive">
+                    <i data-lucide="x" size="24"></i>
+                </button>
+            </div>
+
+            <form id="submissionForm" class="space-y-4">
+                <div>
+                    <label class="text-xs font-bold text-olive/60 uppercase tracking-widest mb-1 block">分類</label>
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-2" id="modalCategoryList">
+                        <!-- Category chips injected here -->
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold text-olive/60 uppercase tracking-widest mb-1 block">菜品名稱 (可選)</label>
+                    <input type="text" id="dishNameInput" placeholder="例如：叉燒燒鵝飯" class="w-full bg-white border border-olive/10 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-olive/20 text-olive">
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold text-olive/60 uppercase tracking-widest mb-1 block">評分</label>
+                    <div class="flex gap-2" id="starRatingContainer">
+                        <!-- 5 stars -->
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold text-olive/60 uppercase tracking-widest mb-1 block">內容</label>
+                    <textarea id="contentInput" required placeholder="味道如何？份量夠嗎？" rows="4" class="w-full bg-white border border-olive/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-olive/20 text-olive serif text-lg"></textarea>
+                </div>
+
+                <button type="submit" class="w-full bg-olive text-white font-bold py-4 rounded-xl shadow-lg hover:bg-olive/90 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                    發佈匿名食評 <i data-lucide="chevron-right" size="18"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Script Section -->
+    <script>
+        // Constants
+        const CATEGORIES = ['全部', '一號飯堂', '二號飯堂', '咖啡廳', '小食店', '校外外賣'];
+        const STORAGE_KEY = "records";
+
+        // State variables
+        let currentView = "home";
+        let selectedCategory = "全部";
+        let statusFilter = "全部";
+        let currentRating = 5;
+        let selectedSubmissionCategory = CATEGORIES[1];
+
+        const NAV_BUTTONS = {
+            home: document.getElementById('navHome'),
+            leaderboard: document.getElementById('navLeaderboard'),
+            lottery: document.getElementById('navLottery')
+        };
+
+        const VIEWS = {
+            home: document.getElementById('homeView'),
+            leaderboard: document.getElementById('leaderboardView'),
+            lottery: document.getElementById('lotteryView')
+        };
+
+        // 6. JS 必須有 3 個分離 function
+        function loadData() {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            return raw ? JSON.parse(raw) : [];
+        }
+
+        function saveData(newRecord) {
+            const records = loadData();
+            // Data Schema 限制
+            const record = {
+                id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+                createdAt: new Date().toISOString(),
+                status: "active", // default
+                likes: 0,
+                ...newRecord
+            };
+            records.push(record);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            renderList();
+        }
+
+        function updateRecord(id, updates) {
+            let records = loadData();
+            records = records.map(r => r.id === id ? { ...r, ...updates } : r);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            renderList();
+        }
+
+        function renderList() {
+            const records = loadData();
+            
+            // 1. Calculate stats (global or category-specific depending on UI choice, let's stick to category for now)
+            const currentCatList = selectedCategory === '全部' ? records : records.filter(r => r.category === selectedCategory);
+            const activeCount = currentCatList.filter(r => (r.status || 'active') === 'active').length;
+            const doneCount = currentCatList.filter(r => r.status === 'done').length;
+            
+            document.getElementById('activeCount').textContent = activeCount;
+            document.getElementById('doneCount').textContent = doneCount;
+            document.getElementById('totalCount').textContent = currentCatList.length;
+
+            // 2. Render Leaderboard if needed
+            renderLeaderboard(records);
+
+            // 3. Filter list for rendering
+            let filtered = currentCatList;
+            if (statusFilter !== '全部') {
+                filtered = filtered.filter(r => r.status === statusFilter);
+            }
+
+            // Sort: active on top, then time desc
+            filtered.sort((a, b) => {
+                if (a.status === b.status) {
+                    return new Date(b.createdAt) - new Date(a.createdAt);
+                }
+                return a.status === 'active' ? -1 : 1;
+            });
+
+            const listContainer = document.getElementById('reviewList');
+            const emptyState = document.getElementById('emptyState');
+            listContainer.innerHTML = '';
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                filtered.forEach(record => {
+                    const isDone = record.status === 'done';
+                    const card = document.createElement('div');
+                    card.className = `fade-in bg-white rounded-2xl p-4 shadow-sm border border-olive/5 transition-opacity duration-300 ${isDone ? 'opacity-50 grayscale-[0.2]' : ''}`;
+                    
+                    const stars = Array(5).fill(0).map((_, i) => `<i data-lucide="star" class="${i < record.rating ? 'text-amber-500 fill-amber-500' : 'text-amber-200'}" size="14"></i>`).join('');
+
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-medium px-2 py-0.5 bg-olive/10 text-olive rounded-md">${record.category}</span>
+                                ${record.dishName ? `<span class="text-sm font-semibold text-olive/80 ${isDone ? 'line-through' : ''}">${record.dishName}</span>` : ''}
+                            </div>
+                            <div class="flex items-center gap-0.5">${stars}</div>
+                        </div>
+                        <p class="text-gray-700 leading-relaxed mb-4 serif text-lg ${isDone ? 'line-through opacity-70' : ''}">${record.content}</p>
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400 uppercase tracking-widest">${new Date(record.createdAt).toLocaleDateString()}</span>
+                                <button class="toggle-status-btn text-[10px] font-bold px-2 py-1 rounded-md transition-all ${isDone ? 'bg-olive text-white' : 'bg-olive/10 text-olive border border-olive/20'}" data-id="${record.id}" data-status="${record.status}">
+                                    ${isDone ? '已嚐鮮' : '打卡已嚐鮮'}
+                                </button>
+                            </div>
+                            <button class="like-btn flex items-center gap-1.5 px-3 py-1 rounded-full bg-warm-bg text-olive hover:bg-olive hover:text-white transition-all active:scale-90" data-id="${record.id}">
+                                <i data-lucide="thumbs-up" size="14"></i>
+                                <span class="text-xs font-bold">${record.likes}</span>
+                            </button>
+                        </div>
+                    `;
+                    listContainer.appendChild(card);
+                });
+            }
+            lucide.createIcons();
+        }
+
+        function renderLeaderboard(records) {
+            const dishStats = {};
+            records.forEach(r => {
+                if (!r.dishName) return;
+                const key = `${r.dishName}-${r.category}`;
+                if (!dishStats[key]) {
+                    dishStats[key] = { totalRating: 0, count: 0, dishName: r.dishName, category: r.category };
+                }
+                dishStats[key].totalRating += r.rating;
+                dishStats[key].count += 1;
+            });
+
+            const topList = Object.values(dishStats)
+                .map(s => ({ ...s, avgRating: s.totalRating / s.count }))
+                .sort((a, b) => b.avgRating - a.avgRating || b.count - a.count)
+                .slice(0, 10);
+
+            const container = document.getElementById('leaderboardList');
+            container.innerHTML = '';
+            
+            topList.forEach((item, index) => {
+                const row = document.createElement('div');
+                row.className = `fade-in bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm border border-olive/5`;
+                
+                const rankColor = index === 0 ? 'bg-amber-400 text-white' : 
+                                 index === 1 ? 'bg-gray-300 text-white' :
+                                 index === 2 ? 'bg-amber-600 text-white' : 'bg-olive/10 text-olive';
+
+                row.innerHTML = `
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${rankColor}">${index + 1}</div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-olive">${item.dishName}</h3>
+                        <p class="text-xs text-olive/60">${item.category}</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="flex items-center gap-1 text-amber-500 font-bold">
+                            <i data-lucide="star" size="16" class="fill-amber-500"></i>
+                            ${item.avgRating.toFixed(1)}
+                        </div>
+                        <p class="text-[10px] text-gray-400 uppercase">${item.count} 條評價</p>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+            lucide.createIcons();
+        }
+
+        // Interaction Handlers
+        document.getElementById('reviewList').addEventListener('click', (e) => {
+            const likeBtn = e.target.closest('.like-btn');
+            if (likeBtn) {
+                const id = likeBtn.dataset.id;
+                const records = loadData();
+                const record = records.find(r => r.id === id);
+                if (record) {
+                    updateRecord(id, { likes: record.likes + 1 });
+                }
+            }
+
+            const statusBtn = e.target.closest('.toggle-status-btn');
+            if (statusBtn) {
+                const id = statusBtn.dataset.id;
+                const currentStatus = statusBtn.dataset.status;
+                updateRecord(id, { status: currentStatus === 'done' ? 'active' : 'done' });
+            }
+        });
+
+        // View Switching
+        function switchView(viewName) {
+            currentView = viewName;
+            
+            // Toggle Views
+            Object.keys(VIEWS).forEach(v => {
+                if (v === viewName) {
+                    VIEWS[v].classList.remove('hidden');
+                } else {
+                    VIEWS[v].classList.add('hidden');
+                }
+            });
+
+            // Update Nav Buttons
+            Object.keys(NAV_BUTTONS).forEach(bn => {
+                const btn = NAV_BUTTONS[bn];
+                if (bn === viewName) {
+                    btn.className = "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 bg-olive text-white shadow-md";
+                } else {
+                    btn.className = "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 text-olive/60 hover:text-olive";
+                }
+            });
+
+            if (viewName === 'home') renderList();
+            if (viewName === 'leaderboard') renderLeaderboard(loadData());
+            
+            lucide.createIcons();
+        }
+
+        NAV_BUTTONS.home.onclick = () => switchView('home');
+        NAV_BUTTONS.leaderboard.onclick = () => switchView('leaderboard');
+        NAV_BUTTONS.lottery.onclick = () => switchView('lottery');
+
+        // Lottery Logic
+        const spinBtn = document.getElementById('spinBtn');
+        const lotteryIdle = document.getElementById('lotteryIdle');
+        const lotterySpinning = document.getElementById('lotterySpinning');
+        const lotteryResult = document.getElementById('lotteryResult');
+        const lotteryError = document.getElementById('lotteryError');
+
+        spinBtn.onclick = () => {
+            const records = loadData().filter(r => r.dishName && r.dishName.trim() !== "");
+            
+            if (records.length === 0) {
+                lotteryError.classList.remove('hidden');
+                return;
+            } else {
+                lotteryError.classList.add('hidden');
+            }
+
+            lotteryIdle.classList.add('hidden');
+            lotteryResult.classList.add('hidden');
+            lotterySpinning.classList.remove('hidden');
+            spinBtn.disabled = true;
+            spinBtn.classList.add('opacity-50', 'scale-95');
+
+            // Quick shuffle animation effect
+            let shuffleCount = 0;
+            const shuffleInterval = setInterval(() => {
+                const tempRecord = records[Math.floor(Math.random() * records.length)];
+                // Optional: show some fast changing text if you want
+                shuffleCount++;
+                if (shuffleCount > 15) clearInterval(shuffleInterval);
+            }, 80);
+
+            setTimeout(() => {
+                const randomRecord = records[Math.floor(Math.random() * records.length)];
+                
+                document.getElementById('lotteryResultCategory').textContent = randomRecord.category;
+                document.getElementById('lotteryResultName').textContent = randomRecord.dishName;
+                document.getElementById('lotteryResultContent').textContent = randomRecord.content ? `"${randomRecord.content.substring(0, 80)}${randomRecord.content.length > 80 ? '...' : ''}"` : "";
+
+                lotterySpinning.classList.add('hidden');
+                lotteryResult.classList.remove('hidden');
+                lotteryResult.classList.add('animate-in', 'zoom-in-95', 'duration-500');
+                
+                spinBtn.disabled = false;
+                spinBtn.classList.remove('opacity-50', 'scale-95');
+                lucide.createIcons();
+            }, 1500);
+        };
+
+        // Modal Controls
+        const modalBackdrop = document.getElementById('modalBackdrop');
+        const modalContent = document.getElementById('modalContent');
+        const openModalBtn = document.getElementById('openModalBtn');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+
+        openModalBtn.addEventListener('click', () => {
+            modalBackdrop.classList.remove('hidden');
+            setTimeout(() => modalContent.classList.remove('translate-y-full'), 10);
+        });
+
+        function closeModal() {
+            modalContent.classList.add('translate-y-full');
+            setTimeout(() => modalBackdrop.classList.add('hidden'), 300);
+        }
+
+        closeModalBtn.addEventListener('click', closeModal);
+        modalBackdrop.addEventListener('click', (e) => {
+            if (e.target === modalBackdrop) closeModal();
+        });
+
+        // Form Submission
+        document.getElementById('submissionForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const content = document.getElementById('contentInput').value.trim();
+            const dishName = document.getElementById('dishNameInput').value.trim();
+            
+            if (!content) return;
+
+            saveData({
+                content,
+                dishName,
+                rating: currentRating,
+                category: selectedSubmissionCategory
+            });
+
+            // Reset
+            document.getElementById('submissionForm').reset();
+            currentRating = 5;
+            selectedSubmissionCategory = CATEGORIES[1];
+            renderModalCategories();
+            renderModalStars();
+            closeModal();
+        });
+
+        // Initialize UI
+        function initApp() {
+            // Render Category Filters
+            const catFilters = document.getElementById('categoryFilters');
+            catFilters.innerHTML = '';
+            CATEGORIES.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.textContent = cat;
+                btn.className = `px-4 py-1.5 rounded-full text-sm whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-olive text-white shadow-md' : 'bg-white text-olive/60 border border-olive/10'}`;
+                btn.onclick = () => {
+                    selectedCategory = cat;
+                    initApp(); // re-init filters and list
+                };
+                catFilters.appendChild(btn);
+            });
+
+            // Status Filter Logic
+            const statusBtns = document.querySelectorAll('#statusFilters button');
+            statusBtns.forEach(btn => {
+                const f = btn.dataset.filter;
+                if (statusFilter === f) {
+                    btn.className = 'flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white text-olive shadow-sm ring-1 ring-olive/10';
+                } else {
+                    btn.className = 'flex-1 py-2 text-xs font-bold rounded-lg transition-all text-olive/40 hover:text-olive/60';
+                }
+                btn.onclick = () => {
+                    statusFilter = f;
+                    renderList();
+                    initApp();
+                }
+            });
+
+            renderModalCategories();
+            renderModalStars();
+            renderList();
+        }
+
+        function renderModalCategories() {
+            const container = document.getElementById('modalCategoryList');
+            container.innerHTML = '';
+            CATEGORIES.slice(1).forEach(cat => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = cat;
+                const isActive = selectedSubmissionCategory === cat;
+                btn.className = `px-4 py-1.5 rounded-full text-xs whitespace-nowrap transition-all ${isActive ? 'bg-olive text-white' : 'bg-white text-olive/60 border border-olive/10'}`;
+                btn.onclick = () => {
+                    selectedSubmissionCategory = cat;
+                    renderModalCategories();
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        function renderModalStars() {
+            const container = document.getElementById('starRatingContainer');
+            container.innerHTML = '';
+            for (let i = 1; i <= 5; i++) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = `w-10 h-10 rounded-full flex items-center justify-center transition-all ${currentRating >= i ? 'text-amber-500' : 'text-gray-300'}`;
+                btn.innerHTML = `<i data-lucide="star" size="24" ${currentRating >= i ? 'class="fill-amber-500"' : ''}></i>`;
+                btn.onclick = () => {
+                    currentRating = i;
+                    renderModalStars();
+                };
+                container.appendChild(btn);
+            }
+            lucide.createIcons();
+        }
+
+        // Start
+        window.onload = () => {
+            const currentData = loadData();
+            if (currentData.length === 0) {
+                const SEED_DATA = [
+                    { dishName: "乾炒牛河", content: "鑊氣十足，牛肉很嫩，校園經典！", rating: 5, category: "一號飯堂", likes: 12, status: "active" },
+                    { dishName: "西多士", content: "下午茶必點，花生醬超邪惡，配奶茶一流。", rating: 4, category: "咖啡廳", likes: 8, status: "active" },
+                    { dishName: "焗豬扒飯", content: "芝士份量很多，豬扒厚實多汁。", rating: 5, category: "二號飯堂", likes: 15, status: "active" },
+                    { dishName: "雲吞麵", content: "湯底鮮甜，雲吞裡有整粒大蝦。", rating: 4, category: "小食店", likes: 5, status: "active" },
+                    { dishName: "港式奶茶", content: "茶味濃厚順滑，比起手搖飲更有誠意。", rating: 4, category: "咖啡廳", likes: 9, status: "active" },
+                    { dishName: "咖哩魚蛋", content: "醬汁香辣，適合下課解饞的小點心。", rating: 3, category: "小食店", likes: 20, status: "active" },
+                    { dishName: "炭燒雞腿飯", content: "雞腿排超大塊，外皮焦脆。", rating: 5, category: "校外外賣", likes: 11, status: "active" },
+                    { dishName: "冰火菠蘿油", content: "牛油溶化的那一刻簡直是天堂。", rating: 5, category: "咖啡廳", likes: 7, status: "active" },
+                    { dishName: "滑蛋蝦仁飯", content: "蛋液滑嫩，蝦仁很大顆，非常有誠意。", rating: 5, category: "二號飯堂", likes: 18, status: "active" },
+                    { dishName: "麻辣燙", content: "自選配料很豐富，湯底夠麻夠辣。", rating: 4, category: "小食店", likes: 25, status: "active" },
+                    { dishName: "鹽酥雞", content: "外皮酥脆，裡面很多汁，配九層塔絕了。", rating: 5, category: "小食店", likes: 14, status: "active" },
+                    { dishName: "藍莓貝果", content: "貝果很有嚼勁，藍莓果醬是手工做的。", rating: 4, category: "咖啡廳", likes: 6, status: "active" },
+                    { dishName: "泰式打拋豬飯", content: "辣度適中，超級下飯，強烈推薦！", rating: 5, category: "校外外賣", likes: 22, status: "active" },
+                    { dishName: "照燒鰻魚飯", content: "鰻魚烤得剛好，醬汁偏甜，性價比高。", rating: 4, category: "校外外賣", likes: 9, status: "active" },
+                    { dishName: "揚州炒飯", content: "粒粒分明，配料豐富，吃得飽！", rating: 4, category: "一號飯堂", likes: 7, status: "active" },
+                    { dishName: "芝士奶蓋紅薯", content: "紅薯很甜，奶蓋鹹甜適中，很特別的組合。", rating: 5, category: "咖啡廳", likes: 13, status: "active" },
+                    { dishName: "章魚小丸子", content: "外皮焦脆，裡面的章魚很大顆，醬汁很多。", rating: 4, category: "小食店", likes: 19, status: "active" },
+                    { dishName: "麻婆豆腐飯", content: "豆腐很嫩，麻辣鮮香，非常開胃。", rating: 4, category: "一號飯堂", likes: 10, status: "active" },
+                    { dishName: "日式拉麵", content: "湯底濃郁，叉燒入口即化，推薦！", rating: 5, category: "校外外賣", likes: 16, status: "active" },
+                    { dishName: "吞拿魚三明治", category: "二號飯堂", content: "吞拿魚給得很多，配生菜很清爽。", rating: 4, likes: 5, status: "active" }
+                ];
+                
+                const initialRecords = SEED_DATA.map(item => ({
+                    ...item,
+                    id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+                    createdAt: new Date().toISOString()
+                }));
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(initialRecords));
+            }
+            initApp();
+        };
+    </script>
+</body>
+</html>
