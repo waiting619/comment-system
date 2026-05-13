@@ -107,6 +107,10 @@
                                         <span class="text-[9px] font-black text-olive/30 uppercase tracking-widest">TOTAL</span>
                                         <span class="text-xl sm:text-2xl font-bold text-olive/20" id="totalCount">0</span>
                                     </div>
+                                    <button id="resetDataBtn" class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-olive/5 text-[9px] font-bold text-olive/40 hover:bg-olive/10 hover:text-olive transition-colors">
+                                        <i data-lucide="refresh-cw" size="10"></i>
+                                        載入預設
+                                    </button>
                                 </div>
                                 <div class="w-full sm:w-auto flex gap-1 p-1 bg-olive/5 rounded-2xl border border-olive/10" id="statusFilters">
                                     <button data-filter="全部" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 text-[10px] font-black rounded-xl transition-all bg-white text-olive shadow-sm ring-1 ring-olive/10">全部</button>
@@ -240,6 +244,26 @@
 
     <!-- Script Section -->
     <script>
+        // ========== Google Sheets 同步設定 ==========
+        const APPS_SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_URL_HERE"; // 請更換為你部署後的真實網址
+
+        // 同步至 Google Sheet 的輔助函式（非同步，絕不阻擋 UI）
+        function syncToSheet(payload) {
+            if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === "PASTE_YOUR_APPS_SCRIPT_URL_HERE") {
+                console.warn("尚未設定 APPS_SCRIPT_URL，略過同步");
+                return;
+            }
+            fetch(APPS_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => console.log("同步成功", data))
+            .catch(err => console.warn("同步失敗（不影響本機操作）", err));
+        }
+        // ===========================================
+
         // Constants
         const CATEGORIES = ['全部', '一號飯堂', '二號飯堂', '咖啡廳', '小食店', '校外外賣'];
         const STORAGE_KEY = "records";
@@ -282,6 +306,9 @@
             records.push(record);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
             renderList();
+
+            // 同步新增至 Google Sheet
+            syncToSheet({ action: "create", record: record });
         }
 
         function updateRecord(id, updates) {
@@ -289,6 +316,9 @@
             records = records.map(r => r.id === id ? { ...r, ...updates } : r);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
             renderList();
+
+            // 同步更新至 Google Sheet
+            syncToSheet({ action: "update", id: id, changes: updates });
         }
 
         function renderList() {
@@ -630,37 +660,83 @@
 
         // Start
         window.onload = () => {
-            const currentData = loadData();
-            if (currentData.length === 0) {
-                const SEED_DATA = [
-                    { dishName: "乾炒牛河", content: "鑊氣十足，牛肉很嫩，校園經典！", rating: 5, category: "一號飯堂", likes: 12, status: "active" },
-                    { dishName: "西多士", content: "下午茶必點，花生醬超邪惡，配奶茶一流。", rating: 4, category: "咖啡廳", likes: 8, status: "active" },
-                    { dishName: "焗豬扒飯", content: "芝士份量很多，豬扒厚實多汁。", rating: 5, category: "二號飯堂", likes: 15, status: "active" },
-                    { dishName: "雲吞麵", content: "湯底鮮甜，雲吞裡有整粒大蝦。", rating: 4, category: "小食店", likes: 5, status: "active" },
-                    { dishName: "港式奶茶", content: "茶味濃厚順滑，比起手搖飲更有誠意。", rating: 4, category: "咖啡廳", likes: 9, status: "active" },
-                    { dishName: "咖哩魚蛋", content: "醬汁香辣，適合下課解饞的小點心。", rating: 3, category: "小食店", likes: 20, status: "active" },
-                    { dishName: "炭燒雞腿飯", content: "雞腿排超大塊，外皮焦脆。", rating: 5, category: "校外外賣", likes: 11, status: "active" },
-                    { dishName: "冰火菠蘿油", content: "牛油溶化的那一刻簡直是天堂。", rating: 5, category: "咖啡廳", likes: 7, status: "active" },
-                    { dishName: "滑蛋蝦仁飯", content: "蛋液滑嫩，蝦仁很大顆，非常有誠意。", rating: 5, category: "二號飯堂", likes: 18, status: "active" },
-                    { dishName: "麻辣燙", content: "自選配料很豐富，湯底夠麻夠辣。", rating: 4, category: "小食店", likes: 25, status: "active" },
-                    { dishName: "鹽酥雞", content: "外皮酥脆，裡面很多汁，配九層塔絕了。", rating: 5, category: "小食店", likes: 14, status: "active" },
-                    { dishName: "藍莓貝果", content: "貝果很有嚼勁，藍莓果醬是手工做的。", rating: 4, category: "咖啡廳", likes: 6, status: "active" },
-                    { dishName: "泰式打拋豬飯", content: "辣度適中，超級下飯，強烈推薦！", rating: 5, category: "校外外賣", likes: 22, status: "active" },
-                    { dishName: "照燒鰻魚飯", content: "鰻魚烤得剛好，醬汁偏甜，性價比高。", rating: 4, category: "校外外賣", likes: 9, status: "active" },
-                    { dishName: "揚州炒飯", content: "粒粒分明，配料豐富，吃得飽！", rating: 4, category: "一號飯堂", likes: 7, status: "active" },
-                    { dishName: "芝士奶蓋紅薯", content: "紅薯很甜，奶蓋鹹甜適中，很特別的組合。", rating: 5, category: "咖啡廳", likes: 13, status: "active" },
-                    { dishName: "章魚小丸子", content: "外皮焦脆，裡面的章魚很大顆，醬汁很多。", rating: 4, category: "小食店", likes: 19, status: "active" },
-                    { dishName: "麻婆豆腐飯", content: "豆腐很嫩，麻辣鮮香，非常開胃。", rating: 4, category: "一號飯堂", likes: 10, status: "active" },
-                    { dishName: "日式拉麵", content: "湯底濃郁，叉燒入口即化，推薦！", rating: 5, category: "校外外賣", likes: 16, status: "active" },
-                    { dishName: "吞拿魚三明治", category: "二號飯堂", content: "吞拿魚給得很多，配生菜很清爽。", rating: 4, likes: 5, status: "active" }
-                ];
-                
+            const SEED_DATA = [
+                // 一號飯堂
+                { dishName: "乾炒牛河", content: "鑊氣十足，牛肉很嫩，校園經典！", rating: 5, category: "一號飯堂", likes: 12, status: "active" },
+                { dishName: "揚州炒飯", content: "粒粒分明，配料豐富，吃得飽！", rating: 4, category: "一號飯堂", likes: 7, status: "active" },
+                { dishName: "麻婆豆腐飯", content: "豆腐很嫩，麻辣鮮香，非常開胃。", rating: 4, category: "一號飯堂", likes: 10, status: "active" },
+                { dishName: "紅燒肉飯", content: "肥而不膩，醬汁非常下飯，推薦！", rating: 5, category: "一號飯堂", likes: 15, status: "active" },
+                { dishName: "芙蓉蛋飯", content: "蛋香濃郁，簡單卻美味的選擇。", rating: 4, category: "一號飯堂", likes: 6, status: "active" },
+                { dishName: "滷味拼盤", content: "雞翅和鴨胗很入味，配飯一流。", rating: 4, category: "一號飯堂", likes: 8, status: "active" },
+                { dishName: "鮮蝦餛飩", content: "皮薄餡大，湯底鮮美，很有誠意。", rating: 4, category: "一號飯堂", likes: 5, status: "active" },
+                { dishName: "蔥油餅", content: "外皮焦香，內裡柔軟，蔥香味濃。", rating: 3, category: "一號飯堂", likes: 12, status: "active" },
+
+                // 二號飯堂
+                { dishName: "焗豬扒飯", content: "芝士份量很多，豬扒厚實多汁。", rating: 5, category: "二號飯堂", likes: 15, status: "active" },
+                { dishName: "滑蛋蝦仁飯", content: "蛋液滑嫩，蝦仁很大顆，非常有誠意。", rating: 5, category: "二號飯堂", likes: 18, status: "active" },
+                { dishName: "咖哩雞扒飯", content: "咖哩味很濃，雞扒炸得剛好，很大份。", rating: 4, category: "二號飯堂", likes: 11, status: "active" },
+                { dishName: "吞拿魚三明治", content: "吞拿魚給得很多，配生菜很清爽。", rating: 4, category: "二號飯堂", likes: 5, status: "active" },
+                { dishName: "培根蛋麵", content: "奶油味很香，培根煎得脆脆的。", rating: 4, category: "二號飯堂", likes: 9, status: "active" },
+                { dishName: "雞排便當", content: "雞排超大一塊，配菜也很豐富。", rating: 5, category: "二號飯堂", likes: 14, status: "active" },
+                { dishName: "燒肉飯", content: "脆皮燒肉，油脂分佈均勻。", rating: 5, category: "二號飯堂", likes: 20, status: "active" },
+                { dishName: "蜜汁叉燒", content: "色澤紅亮，味道甘甜不膩。", rating: 4, category: "二號飯堂", likes: 7, status: "active" },
+
+                // 咖啡廳
+                { dishName: "西多士", content: "下午茶必點，花生醬超邪惡，配奶茶一流。", rating: 4, category: "咖啡廳", likes: 8, status: "active" },
+                { dishName: "港式奶茶", content: "茶味濃厚順滑，比手搖飲更有誠意。", rating: 4, category: "咖啡廳", likes: 9, status: "active" },
+                { dishName: "冰火菠蘿油", content: "牛油溶化的那一刻簡直是天堂。", rating: 5, category: "咖啡廳", likes: 7, status: "active" },
+                { dishName: "藍莓貝果", content: "貝果很有嚼勁，藍莓果醬是手工做的。", rating: 4, category: "咖啡廳", likes: 6, status: "active" },
+                { dishName: "拿鐵咖啡", content: "奶泡很綿密，拉花也很漂亮。", rating: 4, category: "咖啡廳", likes: 12, status: "active" },
+                { dishName: "髒髒包", content: "可可粉很香，巧克力夾心濃郁。", rating: 5, category: "咖啡廳", likes: 15, status: "active" },
+                { dishName: "提拉米蘇", content: "朗姆酒味淡淡的，口感很絲滑。", rating: 5, category: "咖啡廳", likes: 11, status: "active" },
+                { dishName: "抹茶拿鐵", content: "抹茶控必選，苦中帶甜。", rating: 4, category: "咖啡廳", likes: 8, status: "active" },
+                { dishName: "熱可可", content: "冬日必備，暖暖的很貼心。", rating: 3, category: "咖啡廳", likes: 14, status: "active" },
+                { dishName: "芝士蛋糕", content: "乳酪味非常紮實，很好吃。", rating: 5, category: "咖啡廳", likes: 6, status: "active" },
+
+                // 小食店
+                { dishName: "雲吞麵", content: "湯底鮮甜，雲吞裡有整粒大蝦。", rating: 4, category: "小食店", likes: 5, status: "active" },
+                { dishName: "咖哩魚蛋", content: "醬汁香辣，適合下課解饞的小點心。", rating: 3, category: "小食店", likes: 20, status: "active" },
+                { dishName: "麻辣燙", content: "自選配料很豐富，湯底夠麻夠辣。", rating: 4, category: "小食店", likes: 25, status: "active" },
+                { dishName: "鹽酥雞", content: "外皮酥脆，裡面很多汁，配九層塔絕了。", rating: 5, category: "小食店", likes: 14, status: "active" },
+                { dishName: "章魚小丸子", content: "外皮焦脆，裡面的章魚很大顆，醬汁很多。", rating: 4, category: "小食店", likes: 19, status: "active" },
+                { dishName: "炸醬麵", content: "醬料豐富，配上黃瓜絲很清爽。", rating: 4, category: "小食店", likes: 8, status: "active" },
+                { dishName: "涼皮", content: "又酸又辣，適合夏天吃。", rating: 4, category: "小食店", likes: 11, status: "active" },
+                { dishName: "臭豆腐", content: "聞著臭吃著香，外脆內軟。", rating: 5, category: "小食店", likes: 30, status: "active" },
+                { dishName: "燒烤麵筋", content: "香辣入味，很有嚼勁。", rating: 3, category: "小食店", likes: 22, status: "active" },
+                { dishName: "四川冰粉", content: "解辣神器，配料超級多。", rating: 4, category: "小食店", likes: 17, status: "active" },
+
+                // 校外外賣
+                { dishName: "炭燒雞腿飯", content: "雞腿排超大塊，外皮焦脆。", rating: 5, category: "校外外賣", likes: 11, status: "active" },
+                { dishName: "泰式打拋豬飯", content: "辣度適中，超級下飯，強烈推薦！", rating: 5, category: "校外外賣", likes: 22, status: "active" },
+                { dishName: "照燒鰻魚飯", content: "鰻魚烤得剛好，醬汁偏甜，性價比高。", rating: 4, category: "校外外賣", likes: 9, status: "active" },
+                { dishName: "日式拉麵", content: "湯底濃郁，叉燒入口即化，值得一試。", rating: 5, category: "校外外賣", likes: 16, status: "active" },
+                { dishName: "越式牛肉粉", content: "湯頭清爽，牛肉片給得不手軟。", rating: 4, category: "校外外賣", likes: 8, status: "active" },
+                { dishName: "芝士披薩", content: "起司會牽絲，餅皮邊緣很脆。", rating: 4, category: "校外外賣", likes: 12, status: "active" },
+                { dishName: "壽司拼盤", content: "食材新鮮，醋飯調味適中。", rating: 4, category: "校外外賣", likes: 6, status: "active" },
+                { dishName: "酸菜魚", content: "魚肉嫩滑，酸湯超級開胃。", rating: 5, category: "校外外賣", likes: 18, status: "active" },
+                { dishName: "麻辣冒菜", content: "自選料很多，吃完出一身汗很爽。", rating: 4, category: "校外外賣", likes: 14, status: "active" },
+                { dishName: "台式滷肉飯", content: "肉燥滷得很透，配上鹹菜完美。", rating: 5, category: "校外外賣", likes: 11, status: "active" }
+            ];
+
+            const runSeed = () => {
                 const initialRecords = SEED_DATA.map(item => ({
                     ...item,
                     id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
                     createdAt: new Date().toISOString()
                 }));
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(initialRecords));
+                location.reload();
+            };
+
+            document.getElementById('resetDataBtn').onclick = () => {
+                if (confirm('確定要載入預設美食嗎？這將會清除您目前的所有記錄。')) {
+                    runSeed();
+                }
+            };
+
+            const currentData = loadData();
+            if (currentData.length === 0) {
+                runSeed();
             }
             initApp();
         };
