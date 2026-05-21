@@ -59,19 +59,26 @@
                 <h1 class="serif text-2xl font-bold tracking-tight text-olive hidden sm:block">校園美食評分</h1>
                 <h1 class="serif text-xl font-bold tracking-tight text-olive sm:hidden">美食評分</h1>
             </div>
-            <div class="flex bg-olive/5 p-1 rounded-full border border-olive/10 shadow-inner">
-                <button id="navHome" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 bg-olive text-white shadow-md">
-                    <i data-lucide="layout-grid" size="14"></i>
-                    <span class="hidden sm:inline">食評</span>
+            <div class="flex gap-2">
+                <!-- AI 摘要按鈕 -->
+                <button onclick="handleAISummary()" id="aiBtn" class="flex items-center gap-2 bg-zinc-800 text-zinc-100 px-4 py-2 rounded-full font-medium hover:bg-zinc-700 transition-colors active:scale-95 border border-zinc-700 disabled:opacity-50">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    <span id="aiBtnText">AI 摘要</span>
                 </button>
-                <button id="navLeaderboard" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 text-olive/60 hover:text-olive">
-                    <i data-lucide="trophy" size="14"></i>
-                    <span class="hidden sm:inline">排行</span>
-                </button>
-                <button id="navLottery" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 text-olive/60 hover:text-olive">
-                    <i data-lucide="dice-5" size="14"></i>
-                    <span class="hidden sm:inline">抽籤</span>
-                </button>
+                <div class="flex bg-olive/5 p-1 rounded-full border border-olive/10 shadow-inner">
+                    <button id="navHome" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 bg-olive text-white shadow-md">
+                        <i data-lucide="layout-grid" size="14"></i>
+                        <span class="hidden sm:inline">食評</span>
+                    </button>
+                    <button id="navLeaderboard" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 text-olive/60 hover:text-olive">
+                        <i data-lucide="trophy" size="14"></i>
+                        <span class="hidden sm:inline">排行</span>
+                    </button>
+                    <button id="navLottery" class="px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all flex items-center gap-1.5 text-olive/60 hover:text-olive">
+                        <i data-lucide="dice-5" size="14"></i>
+                        <span class="hidden sm:inline">抽籤</span>
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -287,44 +294,79 @@
             lottery: document.getElementById('lotteryView')
         };
 
-        // 6. JS 必須有 3 個分離 function
+        // ---------- 同步讀取 localStorage ----------
         function loadData() {
             const raw = localStorage.getItem(STORAGE_KEY);
             return raw ? JSON.parse(raw) : [];
         }
 
-        function saveData(newRecord) {
-            const records = loadData();
-            // Data Schema 限制
+        // ---------- 從 Sheet 讀取並正規化 ----------
+        function normalizeRecord(record) {
+            return {
+                id: record.id || record.ID || "",
+                createdAt: record.createdAt || record.CreatedAt || "",
+                content: record.content || record.Content || "",
+                category: record.category || record.Category || "其他",
+                likes: Number(record.likes !== undefined ? record.likes : (record.Likes || 0)),
+                status: record.status || record.Status || "active"
+            };
+        }
+
+        async function fetchRecordsFromSheet() {
+            if (APPS_SCRIPT_URL.includes("PASTE")) return null;
+            try {
+                const res = await fetch(APPS_SCRIPT_URL);
+                const data = await res.json();
+                if (Array.isArray(data.records)) {
+                    return data.records.map(normalizeRecord);
+                }
+                return null;
+            } catch (e) {
+                console.warn("從 Sheet 讀取失敗", e);
+                return null;
+            }
+        }
+
+        // ---------- 初始化：從 Sheet 同步到 localStorage ----------
+        async function initFromSheet() {
+            const remoteRecords = await fetchRecordsFromSheet();
+            if (remoteRecords && remoteRecords.length) {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteRecords));
+            }
+            await renderList();
+            lucide.createIcons();
+        }
+
+        // ---------- 儲存新留言（本機優先，然後非同步同步至 Sheet） ----------
+        async function saveData(newRecord) {
+            const records = loadData();  // 讀取本機最新資料
             const record = {
                 id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
                 createdAt: new Date().toISOString(),
-                status: "active", // default
+                status: "active",
                 likes: 0,
                 ...newRecord
             };
             records.push(record);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-            renderList();
-
-            // 同步新增至 Google Sheet
             syncToSheet({ action: "create", record: record });
+            await renderList(records);  // 直接使用最新的本機資料渲染，不重新 GET
         }
 
-        function updateRecord(id, updates) {
+        // ---------- 更新留言（本機優先） ----------
+        async function updateRecord(id, updates) {
             let records = loadData();
             records = records.map(r => r.id === id ? { ...r, ...updates } : r);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-            renderList();
-
-            // 同步更新至 Google Sheet
             syncToSheet({ action: "update", id: id, changes: updates });
+            await renderList(records);
         }
 
-        function renderList() {
-            const records = loadData();
+        // ---------- 渲染主畫面（支援傳入 records 避免重新讀取） ----------
+        async function renderList(recordsOverride) {
+            const records = recordsOverride || loadData();
             
-            // 1. Calculate stats (global or category-specific depending on UI choice, let's stick to category for now)
+            // 依分類過濾
             const currentCatList = selectedCategory === '全部' ? records : records.filter(r => r.category === selectedCategory);
             const activeCount = currentCatList.filter(r => (r.status || 'active') === 'active').length;
             const doneCount = currentCatList.filter(r => r.status === 'done').length;
@@ -333,16 +375,16 @@
             document.getElementById('doneCount').textContent = doneCount;
             document.getElementById('totalCount').textContent = currentCatList.length;
 
-            // 2. Render Leaderboard if needed
+            // 更新排行榜（需要所有 records）
             renderLeaderboard(records);
 
-            // 3. Filter list for rendering
+            // 過濾狀態
             let filtered = currentCatList;
             if (statusFilter !== '全部') {
                 filtered = filtered.filter(r => r.status === statusFilter);
             }
 
-            // Sort: active on top, then time desc
+            // 排序：active 在上，然後時間新->舊
             filtered.sort((a, b) => {
                 if (a.status === b.status) {
                     return new Date(b.createdAt) - new Date(a.createdAt);
@@ -369,11 +411,11 @@
                         <div class="flex justify-between items-start mb-2">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs font-medium px-2 py-0.5 bg-olive/10 text-olive rounded-md">${record.category}</span>
-                                ${record.dishName ? `<span class="text-sm font-semibold text-olive/80 ${isDone ? 'line-through' : ''}">${record.dishName}</span>` : ''}
+                                ${record.dishName ? `<span class="text-sm font-semibold text-olive/80 ${isDone ? 'line-through' : ''}">${escapeHtml(record.dishName)}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-0.5">${stars}</div>
                         </div>
-                        <p class="text-gray-700 leading-relaxed mb-4 serif text-lg ${isDone ? 'line-through opacity-70' : ''}">${record.content}</p>
+                        <p class="text-gray-700 leading-relaxed mb-4 serif text-lg ${isDone ? 'line-through opacity-70' : ''}">${escapeHtml(record.content)}</p>
                         <div class="flex justify-between items-center">
                             <div class="flex items-center gap-2">
                                 <span class="text-[10px] text-gray-400 uppercase tracking-widest">${new Date(record.createdAt).toLocaleDateString()}</span>
@@ -391,6 +433,17 @@
                 });
             }
             lucide.createIcons();
+        }
+
+        // 簡單防 XSS
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
         }
 
         function renderLeaderboard(records) {
@@ -424,7 +477,7 @@
                 row.innerHTML = `
                     <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${rankColor}">${index + 1}</div>
                     <div class="flex-1">
-                        <h3 class="font-bold text-olive">${item.dishName}</h3>
+                        <h3 class="font-bold text-olive">${escapeHtml(item.dishName)}</h3>
                         <p class="text-xs text-olive/60">${item.category}</p>
                     </div>
                     <div class="text-right">
@@ -440,7 +493,7 @@
             lucide.createIcons();
         }
 
-        // Interaction Handlers
+        // Interaction Handlers (使用 updateRecord，非同步但不會重新 GET)
         document.getElementById('reviewList').addEventListener('click', (e) => {
             const likeBtn = e.target.closest('.like-btn');
             if (likeBtn) {
@@ -464,7 +517,6 @@
         function switchView(viewName) {
             currentView = viewName;
             
-            // Toggle Views
             Object.keys(VIEWS).forEach(v => {
                 if (v === viewName) {
                     VIEWS[v].classList.remove('hidden');
@@ -473,7 +525,6 @@
                 }
             });
 
-            // Update Nav Buttons
             Object.keys(NAV_BUTTONS).forEach(bn => {
                 const btn = NAV_BUTTONS[bn];
                 if (bn === viewName) {
@@ -516,11 +567,9 @@
             spinBtn.disabled = true;
             spinBtn.classList.add('opacity-50', 'scale-95');
 
-            // Quick shuffle animation effect
             let shuffleCount = 0;
             const shuffleInterval = setInterval(() => {
                 const tempRecord = records[Math.floor(Math.random() * records.length)];
-                // Optional: show some fast changing text if you want
                 shuffleCount++;
                 if (shuffleCount > 15) clearInterval(shuffleInterval);
             }, 80);
@@ -578,7 +627,6 @@
                 category: selectedSubmissionCategory
             });
 
-            // Reset
             document.getElementById('submissionForm').reset();
             currentRating = 5;
             selectedSubmissionCategory = CATEGORIES[1];
@@ -587,7 +635,43 @@
             closeModal();
         });
 
-        // Initialize UI
+        // ---------- AI 摘要功能 ----------
+        async function askAI(userPrompt) {
+            const res = await fetch(APPS_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify({ action: "askAI", prompt: userPrompt })
+            });
+            const data = await res.json();
+            return data.result || data.error || "AI 冇回應";
+        }
+
+        async function handleAISummary() {
+            const btn = document.getElementById('aiBtn');
+            const textSpan = document.getElementById('aiBtnText');
+            btn.disabled = true;
+            textSpan.textContent = '思考中...';
+            try {
+                const records = loadData();
+                if (records.length === 0) {
+                    alert('未有吐槽資料可以摘要');
+                    return;
+                }
+                const summaryInput = records.slice(0, 30).map(r =>
+                    `[${r.category}] ${r.content}`
+                ).join('\n');
+                const prompt = '以下是班級吐槽牆嘅留言。請用繁體中文，用 3-5 句概括同學最關心嘅問題、情緒同有冇明顯 patterns:\n\n' + summaryInput;
+                const result = await askAI(prompt);
+                alert(result);
+            } catch (e) {
+                alert('AI 出錯：' + e.message);
+            } finally {
+                btn.disabled = false;
+                textSpan.textContent = 'AI 摘要';
+            }
+        }
+
+        // Initialize UI Components
         function initApp() {
             // Render Category Filters
             const catFilters = document.getElementById('categoryFilters');
@@ -621,7 +705,6 @@
 
             renderModalCategories();
             renderModalStars();
-            renderList();
         }
 
         function renderModalCategories() {
@@ -658,87 +741,82 @@
             lucide.createIcons();
         }
 
-        // Start
-        window.onload = () => {
-            const SEED_DATA = [
-                // 一號飯堂
-                { dishName: "乾炒牛河", content: "鑊氣十足，牛肉很嫩，校園經典！", rating: 5, category: "一號飯堂", likes: 12, status: "active" },
-                { dishName: "揚州炒飯", content: "粒粒分明，配料豐富，吃得飽！", rating: 4, category: "一號飯堂", likes: 7, status: "active" },
-                { dishName: "麻婆豆腐飯", content: "豆腐很嫩，麻辣鮮香，非常開胃。", rating: 4, category: "一號飯堂", likes: 10, status: "active" },
-                { dishName: "紅燒肉飯", content: "肥而不膩，醬汁非常下飯，推薦！", rating: 5, category: "一號飯堂", likes: 15, status: "active" },
-                { dishName: "芙蓉蛋飯", content: "蛋香濃郁，簡單卻美味的選擇。", rating: 4, category: "一號飯堂", likes: 6, status: "active" },
-                { dishName: "滷味拼盤", content: "雞翅和鴨胗很入味，配飯一流。", rating: 4, category: "一號飯堂", likes: 8, status: "active" },
-                { dishName: "鮮蝦餛飩", content: "皮薄餡大，湯底鮮美，很有誠意。", rating: 4, category: "一號飯堂", likes: 5, status: "active" },
-                { dishName: "蔥油餅", content: "外皮焦香，內裡柔軟，蔥香味濃。", rating: 3, category: "一號飯堂", likes: 12, status: "active" },
+        // 預設種子資料
+        const SEED_DATA = [
+            { dishName: "乾炒牛河", content: "鑊氣十足，牛肉很嫩，校園經典！", rating: 5, category: "一號飯堂", likes: 12, status: "active" },
+            { dishName: "揚州炒飯", content: "粒粒分明，配料豐富，吃得飽！", rating: 4, category: "一號飯堂", likes: 7, status: "active" },
+            { dishName: "麻婆豆腐飯", content: "豆腐很嫩，麻辣鮮香，非常開胃。", rating: 4, category: "一號飯堂", likes: 10, status: "active" },
+            { dishName: "紅燒肉飯", content: "肥而不膩，醬汁非常下飯，推薦！", rating: 5, category: "一號飯堂", likes: 15, status: "active" },
+            { dishName: "芙蓉蛋飯", content: "蛋香濃郁，簡單卻美味的選擇。", rating: 4, category: "一號飯堂", likes: 6, status: "active" },
+            { dishName: "滷味拼盤", content: "雞翅和鴨胗很入味，配飯一流。", rating: 4, category: "一號飯堂", likes: 8, status: "active" },
+            { dishName: "鮮蝦餛飩", content: "皮薄餡大，湯底鮮美，很有誠意。", rating: 4, category: "一號飯堂", likes: 5, status: "active" },
+            { dishName: "蔥油餅", content: "外皮焦香，內裡柔軟，蔥香味濃。", rating: 3, category: "一號飯堂", likes: 12, status: "active" },
+            { dishName: "焗豬扒飯", content: "芝士份量很多，豬扒厚實多汁。", rating: 5, category: "二號飯堂", likes: 15, status: "active" },
+            { dishName: "滑蛋蝦仁飯", content: "蛋液滑嫩，蝦仁很大顆，非常有誠意。", rating: 5, category: "二號飯堂", likes: 18, status: "active" },
+            { dishName: "咖哩雞扒飯", content: "咖哩味很濃，雞扒炸得剛好，很大份。", rating: 4, category: "二號飯堂", likes: 11, status: "active" },
+            { dishName: "吞拿魚三明治", content: "吞拿魚給得很多，配生菜很清爽。", rating: 4, category: "二號飯堂", likes: 5, status: "active" },
+            { dishName: "培根蛋麵", content: "奶油味很香，培根煎得脆脆的。", rating: 4, category: "二號飯堂", likes: 9, status: "active" },
+            { dishName: "雞排便當", content: "雞排超大一塊，配菜也很豐富。", rating: 5, category: "二號飯堂", likes: 14, status: "active" },
+            { dishName: "燒肉飯", content: "脆皮燒肉，油脂分佈均勻。", rating: 5, category: "二號飯堂", likes: 20, status: "active" },
+            { dishName: "蜜汁叉燒", content: "色澤紅亮，味道甘甜不膩。", rating: 4, category: "二號飯堂", likes: 7, status: "active" },
+            { dishName: "西多士", content: "下午茶必點，花生醬超邪惡，配奶茶一流。", rating: 4, category: "咖啡廳", likes: 8, status: "active" },
+            { dishName: "港式奶茶", content: "茶味濃厚順滑，比手搖飲更有誠意。", rating: 4, category: "咖啡廳", likes: 9, status: "active" },
+            { dishName: "冰火菠蘿油", content: "牛油溶化的那一刻簡直是天堂。", rating: 5, category: "咖啡廳", likes: 7, status: "active" },
+            { dishName: "藍莓貝果", content: "貝果很有嚼勁，藍莓果醬是手工做的。", rating: 4, category: "咖啡廳", likes: 6, status: "active" },
+            { dishName: "拿鐵咖啡", content: "奶泡很綿密，拉花也很漂亮。", rating: 4, category: "咖啡廳", likes: 12, status: "active" },
+            { dishName: "髒髒包", content: "可可粉很香，巧克力夾心濃郁。", rating: 5, category: "咖啡廳", likes: 15, status: "active" },
+            { dishName: "提拉米蘇", content: "朗姆酒味淡淡的，口感很絲滑。", rating: 5, category: "咖啡廳", likes: 11, status: "active" },
+            { dishName: "抹茶拿鐵", content: "抹茶控必選，苦中帶甜。", rating: 4, category: "咖啡廳", likes: 8, status: "active" },
+            { dishName: "熱可可", content: "冬日必備，暖暖的很貼心。", rating: 3, category: "咖啡廳", likes: 14, status: "active" },
+            { dishName: "芝士蛋糕", content: "乳酪味非常紮實，很好吃。", rating: 5, category: "咖啡廳", likes: 6, status: "active" },
+            { dishName: "雲吞麵", content: "湯底鮮甜，雲吞裡有整粒大蝦。", rating: 4, category: "小食店", likes: 5, status: "active" },
+            { dishName: "咖哩魚蛋", content: "醬汁香辣，適合下課解饞的小點心。", rating: 3, category: "小食店", likes: 20, status: "active" },
+            { dishName: "麻辣燙", content: "自選配料很豐富，湯底夠麻夠辣。", rating: 4, category: "小食店", likes: 25, status: "active" },
+            { dishName: "鹽酥雞", content: "外皮酥脆，裡面很多汁，配九層塔絕了。", rating: 5, category: "小食店", likes: 14, status: "active" },
+            { dishName: "章魚小丸子", content: "外皮焦脆，裡面的章魚很大顆，醬汁很多。", rating: 4, category: "小食店", likes: 19, status: "active" },
+            { dishName: "炸醬麵", content: "醬料豐富，配上黃瓜絲很清爽。", rating: 4, category: "小食店", likes: 8, status: "active" },
+            { dishName: "涼皮", content: "又酸又辣，適合夏天吃。", rating: 4, category: "小食店", likes: 11, status: "active" },
+            { dishName: "臭豆腐", content: "聞著臭吃著香，外脆內軟。", rating: 5, category: "小食店", likes: 30, status: "active" },
+            { dishName: "燒烤麵筋", content: "香辣入味，很有嚼勁。", rating: 3, category: "小食店", likes: 22, status: "active" },
+            { dishName: "四川冰粉", content: "解辣神器，配料超級多。", rating: 4, category: "小食店", likes: 17, status: "active" },
+            { dishName: "炭燒雞腿飯", content: "雞腿排超大塊，外皮焦脆。", rating: 5, category: "校外外賣", likes: 11, status: "active" },
+            { dishName: "泰式打拋豬飯", content: "辣度適中，超級下飯，強烈推薦！", rating: 5, category: "校外外賣", likes: 22, status: "active" },
+            { dishName: "照燒鰻魚飯", content: "鰻魚烤得剛好，醬汁偏甜，性價比高。", rating: 4, category: "校外外賣", likes: 9, status: "active" },
+            { dishName: "日式拉麵", content: "湯底濃郁，叉燒入口即化，值得一試。", rating: 5, category: "校外外賣", likes: 16, status: "active" },
+            { dishName: "越式牛肉粉", content: "湯頭清爽，牛肉片給得不手軟。", rating: 4, category: "校外外賣", likes: 8, status: "active" },
+            { dishName: "芝士披薩", content: "起司會牽絲，餅皮邊緣很脆。", rating: 4, category: "校外外賣", likes: 12, status: "active" },
+            { dishName: "壽司拼盤", content: "食材新鮮，醋飯調味適中。", rating: 4, category: "校外外賣", likes: 6, status: "active" },
+            { dishName: "酸菜魚", content: "魚肉嫩滑，酸湯超級開胃。", rating: 5, category: "校外外賣", likes: 18, status: "active" },
+            { dishName: "麻辣冒菜", content: "自選料很多，吃完出一身汗很爽。", rating: 4, category: "校外外賣", likes: 14, status: "active" },
+            { dishName: "台式滷肉飯", content: "肉燥滷得很透，配上鹹菜完美。", rating: 5, category: "校外外賣", likes: 11, status: "active" }
+        ];
 
-                // 二號飯堂
-                { dishName: "焗豬扒飯", content: "芝士份量很多，豬扒厚實多汁。", rating: 5, category: "二號飯堂", likes: 15, status: "active" },
-                { dishName: "滑蛋蝦仁飯", content: "蛋液滑嫩，蝦仁很大顆，非常有誠意。", rating: 5, category: "二號飯堂", likes: 18, status: "active" },
-                { dishName: "咖哩雞扒飯", content: "咖哩味很濃，雞扒炸得剛好，很大份。", rating: 4, category: "二號飯堂", likes: 11, status: "active" },
-                { dishName: "吞拿魚三明治", content: "吞拿魚給得很多，配生菜很清爽。", rating: 4, category: "二號飯堂", likes: 5, status: "active" },
-                { dishName: "培根蛋麵", content: "奶油味很香，培根煎得脆脆的。", rating: 4, category: "二號飯堂", likes: 9, status: "active" },
-                { dishName: "雞排便當", content: "雞排超大一塊，配菜也很豐富。", rating: 5, category: "二號飯堂", likes: 14, status: "active" },
-                { dishName: "燒肉飯", content: "脆皮燒肉，油脂分佈均勻。", rating: 5, category: "二號飯堂", likes: 20, status: "active" },
-                { dishName: "蜜汁叉燒", content: "色澤紅亮，味道甘甜不膩。", rating: 4, category: "二號飯堂", likes: 7, status: "active" },
+        function resetToSeed() {
+            const initialRecords = SEED_DATA.map(item => ({
+                ...item,
+                id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+                createdAt: new Date().toISOString()
+            }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(initialRecords));
+            renderList();
+        }
 
-                // 咖啡廳
-                { dishName: "西多士", content: "下午茶必點，花生醬超邪惡，配奶茶一流。", rating: 4, category: "咖啡廳", likes: 8, status: "active" },
-                { dishName: "港式奶茶", content: "茶味濃厚順滑，比手搖飲更有誠意。", rating: 4, category: "咖啡廳", likes: 9, status: "active" },
-                { dishName: "冰火菠蘿油", content: "牛油溶化的那一刻簡直是天堂。", rating: 5, category: "咖啡廳", likes: 7, status: "active" },
-                { dishName: "藍莓貝果", content: "貝果很有嚼勁，藍莓果醬是手工做的。", rating: 4, category: "咖啡廳", likes: 6, status: "active" },
-                { dishName: "拿鐵咖啡", content: "奶泡很綿密，拉花也很漂亮。", rating: 4, category: "咖啡廳", likes: 12, status: "active" },
-                { dishName: "髒髒包", content: "可可粉很香，巧克力夾心濃郁。", rating: 5, category: "咖啡廳", likes: 15, status: "active" },
-                { dishName: "提拉米蘇", content: "朗姆酒味淡淡的，口感很絲滑。", rating: 5, category: "咖啡廳", likes: 11, status: "active" },
-                { dishName: "抹茶拿鐵", content: "抹茶控必選，苦中帶甜。", rating: 4, category: "咖啡廳", likes: 8, status: "active" },
-                { dishName: "熱可可", content: "冬日必備，暖暖的很貼心。", rating: 3, category: "咖啡廳", likes: 14, status: "active" },
-                { dishName: "芝士蛋糕", content: "乳酪味非常紮實，很好吃。", rating: 5, category: "咖啡廳", likes: 6, status: "active" },
+        document.getElementById('resetDataBtn').onclick = () => {
+            if (confirm('確定要載入預設美食嗎？這將會清除您目前的所有記錄。')) {
+                resetToSeed();
+            }
+        };
 
-                // 小食店
-                { dishName: "雲吞麵", content: "湯底鮮甜，雲吞裡有整粒大蝦。", rating: 4, category: "小食店", likes: 5, status: "active" },
-                { dishName: "咖哩魚蛋", content: "醬汁香辣，適合下課解饞的小點心。", rating: 3, category: "小食店", likes: 20, status: "active" },
-                { dishName: "麻辣燙", content: "自選配料很豐富，湯底夠麻夠辣。", rating: 4, category: "小食店", likes: 25, status: "active" },
-                { dishName: "鹽酥雞", content: "外皮酥脆，裡面很多汁，配九層塔絕了。", rating: 5, category: "小食店", likes: 14, status: "active" },
-                { dishName: "章魚小丸子", content: "外皮焦脆，裡面的章魚很大顆，醬汁很多。", rating: 4, category: "小食店", likes: 19, status: "active" },
-                { dishName: "炸醬麵", content: "醬料豐富，配上黃瓜絲很清爽。", rating: 4, category: "小食店", likes: 8, status: "active" },
-                { dishName: "涼皮", content: "又酸又辣，適合夏天吃。", rating: 4, category: "小食店", likes: 11, status: "active" },
-                { dishName: "臭豆腐", content: "聞著臭吃著香，外脆內軟。", rating: 5, category: "小食店", likes: 30, status: "active" },
-                { dishName: "燒烤麵筋", content: "香辣入味，很有嚼勁。", rating: 3, category: "小食店", likes: 22, status: "active" },
-                { dishName: "四川冰粉", content: "解辣神器，配料超級多。", rating: 4, category: "小食店", likes: 17, status: "active" },
-
-                // 校外外賣
-                { dishName: "炭燒雞腿飯", content: "雞腿排超大塊，外皮焦脆。", rating: 5, category: "校外外賣", likes: 11, status: "active" },
-                { dishName: "泰式打拋豬飯", content: "辣度適中，超級下飯，強烈推薦！", rating: 5, category: "校外外賣", likes: 22, status: "active" },
-                { dishName: "照燒鰻魚飯", content: "鰻魚烤得剛好，醬汁偏甜，性價比高。", rating: 4, category: "校外外賣", likes: 9, status: "active" },
-                { dishName: "日式拉麵", content: "湯底濃郁，叉燒入口即化，值得一試。", rating: 5, category: "校外外賣", likes: 16, status: "active" },
-                { dishName: "越式牛肉粉", content: "湯頭清爽，牛肉片給得不手軟。", rating: 4, category: "校外外賣", likes: 8, status: "active" },
-                { dishName: "芝士披薩", content: "起司會牽絲，餅皮邊緣很脆。", rating: 4, category: "校外外賣", likes: 12, status: "active" },
-                { dishName: "壽司拼盤", content: "食材新鮮，醋飯調味適中。", rating: 4, category: "校外外賣", likes: 6, status: "active" },
-                { dishName: "酸菜魚", content: "魚肉嫩滑，酸湯超級開胃。", rating: 5, category: "校外外賣", likes: 18, status: "active" },
-                { dishName: "麻辣冒菜", content: "自選料很多，吃完出一身汗很爽。", rating: 4, category: "校外外賣", likes: 14, status: "active" },
-                { dishName: "台式滷肉飯", content: "肉燥滷得很透，配上鹹菜完美。", rating: 5, category: "校外外賣", likes: 11, status: "active" }
-            ];
-
-            const runSeed = () => {
-                const initialRecords = SEED_DATA.map(item => ({
-                    ...item,
-                    id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
-                    createdAt: new Date().toISOString()
-                }));
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(initialRecords));
-                location.reload();
-            };
-
-            document.getElementById('resetDataBtn').onclick = () => {
-                if (confirm('確定要載入預設美食嗎？這將會清除您目前的所有記錄。')) {
-                    runSeed();
-                }
-            };
-
-            const currentData = loadData();
-            if (currentData.length === 0) {
-                runSeed();
+        // 啟動流程：先從 Sheet 同步，若無則使用本地或種子
+        window.onload = async () => {
+            // 嘗試從 Sheet 讀取並寫入 localStorage
+            await initFromSheet();
+            // 如果仍然沒有資料，注入種子
+            if (loadData().length === 0) {
+                resetToSeed();
             }
             initApp();
+            lucide.createIcons();
         };
     </script>
 </body>
