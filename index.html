@@ -635,7 +635,7 @@
             closeModal();
         });
 
-        // ---------- AI 摘要功能 ----------
+        // ---------- AI 摘要功能（強化錯誤訊息）----------
         async function askAI(userPrompt) {
             const res = await fetch(APPS_SCRIPT_URL, {
                 method: "POST",
@@ -643,7 +643,15 @@
                 body: JSON.stringify({ action: "askAI", prompt: userPrompt })
             });
             const data = await res.json();
-            return data.result || data.error || "AI 冇回應";
+            // 若有 error 欄位，拋出具體提示
+            if (data.error) {
+                let errorMsg = data.error;
+                if (errorMsg.includes("denied access") || errorMsg.includes("API key")) {
+                    errorMsg = "Gemini API 存取失敗，請確認後端 Apps Script 的指令碼屬性中已正確設定 GEMINI_API_KEY，且模型名稱有效（建議使用 gemini-1.5-flash 或 gemini-2.0-flash-lite）。";
+                }
+                throw new Error(errorMsg);
+            }
+            return data.result || "AI 沒有回傳內容。";
         }
 
         async function handleAISummary() {
@@ -654,9 +662,10 @@
             try {
                 const records = loadData();
                 if (records.length === 0) {
-                    alert('未有吐槽資料可以摘要');
+                    alert('暫無任何食評，無法產生摘要。');
                     return;
                 }
+                // 取前 30 則留言，避免 prompt 過長
                 const summaryInput = records.slice(0, 30).map(r =>
                     `[${r.category}] ${r.content}`
                 ).join('\n');
@@ -664,7 +673,7 @@
                 const result = await askAI(prompt);
                 alert(result);
             } catch (e) {
-                alert('AI 出錯：' + e.message);
+                alert('AI 摘要失敗：' + e.message);
             } finally {
                 btn.disabled = false;
                 textSpan.textContent = 'AI 摘要';
